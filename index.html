@@ -1,109 +1,117 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>MQTT IoT Dashboard</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.1.0/mqttws31.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #f0f2f5;
-      padding: 20px;
-    }
-    h2 { text-align: center; }
-    .card {
-      background: white;
-      padding: 20px;
-      border-radius: 10px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-      max-width: 900px;
-      margin: auto;
-    }
-    #status { font-weight: bold; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MQTT Web Subscriber (HiveMQ Cloud)</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f9; }
+        .container { max-width: 600px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h1 { color: #333; }
+        #status { font-weight: bold; padding: 5px 10px; border-radius: 4px; display: inline-block; }
+        .connected { background-color: #e6ffe6; color: #008000; }
+        .disconnected { background-color: #ffe6e6; color: #cc0000; }
+        .data-box { margin-top: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9; }
+        .suhu-value { font-size: 2.5em; font-weight: bold; color: #007bff; }
+    </style>
 </head>
 <body>
-  <h2>Real-Time IoT MQTT Dashboard</h2>
+    <div class="container">
+        <h1>Dashboard Suhu Real-Time</h1>
+        <p>Status Koneksi Broker: 
+            <span id="status" class="disconnected">Memutuskan...</span>
+        </p>
 
-  <div class="card">
-    <p>Status: <span id="status">Disconnect</span></p>
-    <p>Topic: <b>reza/iot/test</b></p>
-    <canvas id="myChart" height="120"></canvas>
-  </div>
+        <div id="data_display" class="data-box">
+            <p>Menunggu data dari Python Publisher...</p>
+        </div>
+    </div>
 
-  <script>
-    const topic = "reza/iot/test";
-    const broker = "14ff1f8d37db4356a1c0c4dab31d175f.s1.eu.hivemq.cloud";
+    <script>
+        // =======================================================
+        //               KONFIGURASI HIVE MQ CLOUD
+        // =======================================================
+        // --- GANTI DENGAN KREDENSIAL HIVE MQ ANDA ---
+        const host = '14ff1f8d37db4356a1c0c4dab31d175f.s1.eu.hivemq.cloud'; // GANTI
+        const port = 8884; // Port aman WebSocket MQTT (wss://)
+        const username = "Reza_Mul"; // GANTI
+        const password = "Rancaekek123"; // GANTI
+        // --------------------------------------------
+        const topic = 'mydata/sensor/suhu'; 
+        const clientId = "WebAppSubscriber-" + parseInt(Math.random() * 10000, 10);
 
-    // Chart.js setup
-    const ctx = document.getElementById("myChart").getContext("2d");
-    const chart = new Chart(ctx, {
-      type: "line",
-      data: {
-        labels: [],
-        datasets: [
-          {
-            label: "Suhu (°C)",
-            data: [],
-            borderWidth: 2,
-            borderColor: "red",
-          },
-          {
-            label: "Arus (A)",
-            data: [],
-            borderWidth: 2,
-            borderColor: "blue",
-          },
-        ],
-      },
-      options: {
-        responsive: true,
-        scales: { y: { beginAtZero: true } },
-      },
-    });
+        // Inisialisasi Klien MQTT
+        // Catatan: HiveMQ Cloud menggunakan path "/mqtt"
+        const client = new Paho.MQTT.Client(host, port, "/mqtt", clientId);
+        
+        // Atur Callback
+        client.onConnectionLost = onConnectionLost;
+        client.onMessageArrived = onMessageArrived;
 
-    // MQTT WebSocket client
-    const client = new Paho.MQTT.Client(`wss://${broker}:8884/mqtt`, "webclient-" + Math.random()));
+        // Fungsi saat koneksi berhasil
+        function onConnect() {
+            document.getElementById("status").innerText = "Terkoneksi (wss://)";
+            document.getElementById("status").className = "connected";
+            console.log("Terkoneksi ke Broker");
+            
+            // Berlangganan ke topik
+            client.subscribe(topic);
+            console.log(`Berlangganan ke topik: ${topic}`);
+        }
 
-    client.onConnectionLost = () => {
-      document.getElementById("status").innerText = "Disconnected";
-    };
+        // Fungsi saat koneksi gagal
+        function onFailure(responseObject) {
+            document.getElementById("status").innerText = "Gagal Koneksi!";
+            document.getElementById("status").className = "disconnected";
+            console.error("Gagal koneksi: " + responseObject.errorMessage);
+        }
+        
+        // Fungsi saat koneksi terputus
+        function onConnectionLost(responseObject) {
+            document.getElementById("status").innerText = "Koneksi Terputus!";
+            document.getElementById("status").className = "disconnected";
+            if (responseObject.errorCode !== 0) {
+                console.warn("Koneksi terputus: " + responseObject.errorMessage);
+            }
+        }
+        
+        // Fungsi saat pesan MQTT tiba
+        function onMessageArrived(message) {
+            try {
+                const payload = JSON.parse(message.payloadString);
+                console.log("Pesan diterima:", payload);
+                
+                const displayDiv = document.getElementById("data_display");
 
-    client.onMessageArrived = (msg) => {
-      const data = msg.payloadString.split(",");
-      const suhu = parseFloat(data[0]);
-      const arus = parseFloat(data[1]);
+                // Tampilkan data yang diterima
+                displayDiv.innerHTML = `
+                    <h2>Data Sensor Terbaru</h2>
+                    <p>Topik: <b>${message.destinationName}</b></p>
+                    <p>Device ID: ${payload.device}</p>
+                    <p>Waktu Terima: ${new Date().toLocaleTimeString()}</p>
+                    <p>Waktu Data (UTC): ${new Date(payload.timestamp * 1000).toUTCString()}</p>
+                    <p>Suhu: <span class="suhu-value">${payload.suhu}° ${payload.unit}</span></p>
+                `;
+            } catch (e) {
+                console.error("Gagal parse JSON:", e);
+                document.getElementById("data_display").innerText = "Data diterima (non-JSON): " + message.payloadString;
+            }
+        }
 
-      const waktu = new Date().toLocaleTimeString();
+        // Mulai koneksi
+        client.connect({
+            onSuccess: onConnect,
+            onFailure: onFailure,
+            // Konfigurasi Keamanan
+            useSSL: true, 
+            userName: username, 
+            password: password,
+            cleanSession: true
+        });
 
-      chart.data.labels.push(waktu);
-      chart.data.datasets[0].data.push(suhu);
-      chart.data.datasets[1].data.push(arus);
-
-      if (chart.data.labels.length > 20) {
-        chart.data.labels.shift();
-        chart.data.datasets[0].data.shift();
-        chart.data.datasets[1].data.shift();
-      }
-
-      chart.update();
-    };
-
-    function connectMQTT() {
-      client.connect({
-        onSuccess: () => {
-          document.getElementById("status").innerText = "Connected";
-          client.subscribe(topic);
-        },
-        userName: "Reza_Mul",
-        password: "Rancaekek123",
-        useSSL: true,
-      });
-    }
-
-    connectMQTT();
-  </script>
+    </script>
 </body>
 </html>
